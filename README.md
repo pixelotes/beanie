@@ -1,23 +1,23 @@
-# 🎯 Pixelotes MCP Server
+# Beanie MCP Server
 
 Servidor Model Context Protocol (MCP) completo con herramientas de investigación, cálculo y web scraping. Diseñado para Raspberry Pi y otros sistemas embebidos.
 
-## 🚀 Características
+## Características
 
 - **Servidor MCP** en Go con arquitectura de plugins
 - **Herramientas integradas**:
-  - 🧮 Calculadora científica (Qalculate)
-  - 🔬 Wolfram Alpha (requiere API Key)
-  - 📚 Wikipedia Offline (Kiwix)
-  - 🌐 Web scraping inteligente (Jina AI + navegador stealth)
-  - 🌤️ Consultas meteorológicas
-  - 📝 Conversión de formatos (Pandoc)
+  - Calculadora científica (Qalculate)
+  - Wolfram Alpha (requiere API Key)
+  - Wikipedia Offline (Kiwix)
+  - Web scraping inteligente (Jina AI + navegador stealth)
+  - Consultas meteorológicas
+  - Conversión de formatos (Pandoc)
   
 - **Docker Compose** para despliegue simplificado
 - **Python 3.11** para scripts especializados
 - **Optimizado para ARM64** (Raspberry Pi 3/4/5)
 
-## 📋 Requisitos
+## Requisitos
 
 - Docker & Docker Compose v2.0+
 - 2GB RAM mínimo (4GB recomendado)
@@ -35,7 +35,7 @@ bash install-docker.sh
 **macOS/Windows:**
 Descarga [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
-## 🎬 Inicio rápido
+## Inicio rápido
 
 ### 1. Clonar y preparar
 
@@ -71,13 +71,13 @@ docker compose up -d --build
 ./scripts.sh logs-mcp
 ```
 
-## 📖 Documentación
+## Documentación
 
 - **[DOCKER_COMPOSE.md](./DOCKER_COMPOSE.md)** - Setup detallado de Docker
 - **[tools.yaml](./tools.yaml)** - Definición de todas las herramientas disponibles
 - **[main.go](./main.go)** - Código fuente del servidor
 
-## 🛠️ Uso común
+## Uso común
 
 ### Ver estado
 ```bash
@@ -112,14 +112,14 @@ docker compose up -d --build
 ./scripts.sh clean
 ```
 
-## 🌐 Servicios
+## Servicios
 
 | Servicio | Puerto | Tipo | Descripción |
 |----------|--------|------|-------------|
 | **MCP Server** | stdio | IPC | Servidor MCP principal |
 | **Kiwix** | 8080 | HTTP | Wikipedia offline (opcional) |
 
-## 🔧 Configuración
+## Configuración
 
 Variables en `.env`:
 
@@ -131,7 +131,7 @@ WOLFRAM_APPID=your-api-key
 LOG_LEVEL=info
 ```
 
-## 🔌 Integrando con Claude/Copilot
+## Integrando con Claude/Copilot
 
 El servidor expone herramientas vía MCP que pueden ser consumidas por:
 - Claude Desktop
@@ -140,24 +140,7 @@ El servidor expone herramientas vía MCP que pueden ser consumidas por:
 
 Ver documentación oficial: https://modelcontextprotocol.io
 
-## 📦 Estructura del proyecto
-
-```
-.
-├── main.go                 # Servidor MCP en Go
-├── Dockerfile             # Imagen Docker
-├── docker-compose.yml     # Orquestación de servicios
-├── tools.yaml            # Definición de herramientas
-├── scripts/
-│   ├── browser.py        # Web scraping avanzado
-│   ├── kiwix.py          # Integración Kiwix
-│   └── wolfram.py        # Integración Wolfram
-├── tools/
-│   └── client_bridge.py   # Utilidades
-└── install-docker.sh     # Script de instalación
-```
-
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### "connection refused" a Kiwix
 ```bash
@@ -180,11 +163,11 @@ Edita `docker-compose.yml` y cambia los puertos.
 docker system prune -a
 ```
 
-## 📝 Licencia
+## Licencia
 
-[Tu licencia aquí]
+[LICENSE](./LICENSE)
 
-## 🤝 Contribuciones
+## Contribuciones
 
 Las contribuciones son bienvenidas. Por favor:
 1. Fork el proyecto
@@ -193,10 +176,10 @@ Las contribuciones son bienvenidas. Por favor:
 4. Push (`git push origin feature/mejora`)
 5. Abre un Pull Request
 
-## 📞 Soporte
+## Soporte
 
 Para reportar bugs o solicitar features, abre un Issue en GitHub.
 
 ---
 
-**Hecho para Raspberry Pi 🥧**
+**Hecho para Raspberry Pi**
