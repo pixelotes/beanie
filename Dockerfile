@@ -4,7 +4,7 @@ FROM golang:1.23-bookworm AS builder
 WORKDIR /app
 
 # Copiamos definición de módulos y descargamos
-COPY go.mod ./
+COPY go.mod go.sum ./
 # (Si tuvieras go.sum, lo copiarías aquí también)
 RUN go mod download || echo "Creando modulo al vuelo..."
 
@@ -30,7 +30,7 @@ LABEL description="Pixelotes MCP Server: Go + Python + Tools"
 # - zip, unzip: Compresión
 # - iputils-ping, dnsutils: Red
 RUN apt-get update && apt-get install -y \
-    libqalculate-utils \
+    qalc\
     curl wget jq \
     fortune-mod cowsay figlet \
     bsdmainutils \
@@ -43,8 +43,10 @@ RUN apt-get update && apt-get install -y \
 # Añadimos /usr/games al PATH para fortune/cowsay
 ENV PATH="$PATH:/usr/games"
 
+COPY requirements.txt .
+
 # Instalamos librería Python para navegación Stealth
-RUN pip3 install curl_cffi --break-system-packages
+RUN pip3 install -r requirements.txt
 
 WORKDIR /app
 

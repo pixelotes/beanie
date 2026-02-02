@@ -55,9 +55,9 @@ tools:
       url: { type: "string", description: "URL original" }
     pipeline:
       - type: "exec"
-        command: "curl -s -L 'https://r.jina.ai/{{.url}}'"
+        command: "curl -k -s -L 'https://r.jina.ai/{{.url}}'"
 
-  - name: "read_web_stealth"
+  - name: "read_web"
     description: "Lee webs difíciles (Cloudflare/Antibot) usando suplantación de navegador."
     args:
       url: { type: "string", description: "URL completa" }
@@ -75,15 +75,15 @@ tools:
       location: { type: "string", description: "Ciudad (ej: 'Madrid')" }
     pipeline:
       - type: "exec"
-        command: "curl -s 'wttr.in/{{.location}}?format=3'"
+        command: "curl -k -s 'wttr.in/{{.location}}?format=3'"
 
-  - name: "get_calendar"
-    description: "Muestra el calendario."
-    args:
-      year: { type: "string", description: "Año (opcional). Dejar vacío para mes actual." }
-    pipeline:
-      - type: "exec"
-        command: "ncal {{.year}}"
+  #- name: "get_calendar"
+  #  description: "Muestra el calendario."
+  #  args:
+  #    year: { type: "string", description: "Año (opcional). Dejar vacío para mes actual." }
+  #  pipeline:
+  #    - type: "exec"
+  #      command: "ncal {{.year}}"
 
   - name: "fortune_cookie"
     description: "Devuelve una frase ingeniosa, chiste o refrán aleatorio."
@@ -92,23 +92,23 @@ tools:
       - type: "exec"
         command: "fortune"
 
-  - name: "cow_speak"
-    description: "Hace que una vaca diga un mensaje en ASCII."
-    args:
-      message: { type: "string", description: "Texto" }
-    pipeline:
-      - type: "exec"
-        command: "cowsay '{{.message}}'"
+  #- name: "cow_speak"
+  #  description: "Hace que una vaca diga un mensaje en ASCII."
+  #  args:
+  #    message: { type: "string", description: "Texto" }
+  #  pipeline:
+  #    - type: "exec"
+  #      command: "cowsay '{{.message}}'"
 
-  - name: "convert_text"
-    description: "Convierte formato de texto (ej: markdown a html) usando Pandoc."
-    args:
-      text: { type: "string", description: "Contenido a convertir" }
-      from: { type: "string", description: "Formato origen (markdown, html, latex)" }
-      to: { type: "string", description: "Formato destino (plain, html, markdown)" }
-    pipeline:
-      - type: "exec"
-        command: "echo '{{.text}}' | pandoc -f {{.from}} -t {{.to}}"
+  #- name: "convert_text"
+  #  description: "Convierte formato de texto (ej: markdown a html) usando Pandoc."
+  #  args:
+  #    text: { type: "string", description: "Contenido a convertir" }
+  #    from: { type: "string", description: "Formato origen (markdown, html, latex)" }
+  #    to: { type: "string", description: "Formato destino (plain, html, markdown)" }
+  #  pipeline:
+  #    - type: "exec"
+  #      command: "echo '{{.text}}' | pandoc -f {{.from}} -t {{.to}}"
 
   - name: "roll_dice"
     description: "Lanza dados con notación estilo D&D. Soporta múltiples dados y modificadores."
@@ -155,57 +155,57 @@ tools:
   # FILE UTILITIES (Native Go)
   # ============================================================================
 
-  - name: "read_file"
-    description: "Lee el contenido de un archivo local."
-    args:
-      path: { type: "string", description: "Ruta al archivo" }
-    pipeline:
-      - type: "native"
-        command: "fs_read"
-        args:
-          path: "{{.path}}"
+  #- name: "read_file"
+  #  description: "Lee el contenido de un archivo local."
+  #  args:
+  #    path: { type: "string", description: "Ruta al archivo" }
+  #  pipeline:
+  #    - type: "native"
+  #      command: "fs_read"
+  #      args:
+  #        path: "{{.path}}"
 
-  - name: "write_file"
-    description: "Escribe contenido a un archivo local."
-    args:
-      path: { type: "string", description: "Ruta al archivo" }
-      content: { type: "string", description: "Contenido a escribir" }
-    pipeline:
-      - type: "native"
-        command: "fs_write"
-        args:
-          path: "{{.path}}"
-          content: "{{.content}}"
+  #- name: "write_file"
+  #  description: "Escribe contenido a un archivo local."
+  #  args:
+  #    path: { type: "string", description: "Ruta al archivo" }
+  #    content: { type: "string", description: "Contenido a escribir" }
+  #  pipeline:
+  #    - type: "native"
+  #      command: "fs_write"
+  #      args:
+  #        path: "{{.path}}"
+  #        content: "{{.content}}"
 
   # ============================================================================
   # TEXT PROCESSING (Native Go)
   # ============================================================================
 
-  - name: "text_cleanup"
-    description: "Limpia texto: elimina espacios extra y caracteres innecesarios."
-    args:
-      text: { type: "string", description: "Texto a limpiar" }
-    pipeline:
-      # First inject text as input, then trim
-      - type: "exec"
-        command: "echo '{{.text}}'"
-      - type: "native"
-        command: "text_trim"
+  #- name: "text_cleanup"
+  #  description: "Limpia texto: elimina espacios extra y caracteres innecesarios."
+  #  args:
+  #    text: { type: "string", description: "Texto a limpiar" }
+  #  pipeline:
+  #    # First inject text as input, then trim
+  #    - type: "exec"
+  #      command: "echo '{{.text}}'"
+  #    - type: "native"
+  #      command: "text_trim"
 
-  - name: "find_replace"
-    description: "Busca y reemplaza texto."
-    args:
-      text: { type: "string", description: "Texto original" }
-      find: { type: "string", description: "Texto a buscar" }
-      replace: { type: "string", description: "Texto de reemplazo" }
-    pipeline:
-      - type: "exec"
-        command: "echo '{{.text}}'"
-      - type: "native"
-        command: "text_replace"
-        args:
-          old: "{{.find}}"
-          new: "{{.replace}}"
+  #- name: "find_replace"
+  #  description: "Busca y reemplaza texto."
+  #  args:
+  #    text: { type: "string", description: "Texto original" }
+  #    find: { type: "string", description: "Texto a buscar" }
+  #    replace: { type: "string", description: "Texto de reemplazo" }
+  #  pipeline:
+  #    - type: "exec"
+  #      command: "echo '{{.text}}'"
+  #    - type: "native"
+  #      command: "text_replace"
+  #      args:
+  #        old: "{{.find}}"
+  #        new: "{{.replace}}"
 
   # ============================================================================
   # API CALLS (Generic HTTP Client)
