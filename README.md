@@ -1,185 +1,65 @@
 # Beanie MCP Server
 
-Servidor Model Context Protocol (MCP) completo con herramientas de investigación, cálculo y web scraping. Diseñado para Raspberry Pi y otros sistemas embebidos.
+Servidor MCP mínimo para modelos locales: **un único binario en Go, sin dependencias** (solo la librería estándar), ~7 MB y ~15 MB de RAM.
 
-## Características
+## Herramientas
 
-- **Servidor MCP** en Go con arquitectura de plugins
-- **Herramientas integradas**:
-  - Calculadora científica (Qalculate)
-  - Wolfram Alpha (requiere API Key)
-  - Wikipedia Offline (Kiwix)
-  - Web scraping inteligente (Jina AI + navegador stealth)
-  - Consultas meteorológicas
-  - Conversión de formatos (Pandoc)
-  
-- **Docker Compose** para despliegue simplificado
-- **Python 3.11** para scripts especializados
-- **Optimizado para ARM64** (Raspberry Pi 3/4/5)
+| Tool | Qué hace | Servicio |
+|---|---|---|
+| `web_fetch` | Lee una página y devuelve su texto principal en Markdown | directo |
+| `web_search` | Búsqueda web | DuckDuckGo Lite (scraper, sin API key) |
+| `search_wikipedia` | Busca artículos | API de Wikipedia |
+| `fetch_wikipedia` | Lee la introducción, una sección o el artículo completo | API de Wikipedia |
+| `get_weather` | Tiempo actual y previsión (1-7 días) | Open-Meteo (sin API key) |
+| `get_datetime` | Fecha, hora y día de la semana | local |
+| `calculate` | Expresiones y ecuaciones de una incógnita | local |
 
-## Requisitos
+`calculate` acepta sintaxis variada: `2+2`, `2 + 2`, `2×3`, `2x3`, `2**10`, `2,5 * 2`, `2(3+1)`, `√16`, `3²`, `sin(30°)`, `20% de 150`, `150 + 10%`, `5!`, `log(8, 2)`, `mcd(12, 18)`. Ecuaciones: lineales y cuadráticas exactas (`x^2 - 5x + 6 = 0`), el resto numéricamente (`2^x = 1024`, `sin(x) = 0.5`).
 
-- Docker & Docker Compose v2.0+
-- 2GB RAM mínimo (4GB recomendado)
-- 15-20GB espacio en disco (si descargas Wikipedia offline)
-- Conexión a internet (para algunas herramientas)
+Las respuestas largas se cortan (12 000 caracteres por defecto) e indican el `start_index` para seguir leyendo.
 
-### Instalar Docker
+## Uso
 
-**Linux (Debian/Ubuntu):**
 ```bash
-bash install-docker.sh
-# Después: logout y login
+go build -trimpath -ldflags="-s -w" -o beanie .
+./beanie                                 # stdio (Claude Desktop, etc.)
+./beanie -transport http -addr :8090     # HTTP en http://localhost:8090/mcp
 ```
 
-**macOS/Windows:**
-Descarga [Docker Desktop](https://www.docker.com/products/docker-desktop)
-
-## Inicio rápido
-
-### 1. Clonar y preparar
+Con Docker (imagen `scratch`, ~8 MB):
 
 ```bash
-git clone <repo>
-cd raspberry-mcp-server
-cp .env.example .env
-```
-
-### 2. Configurar (Opcional pero recomendado)
-
-```bash
-# Editar .env y agregar WOLFRAM_APPID
-nano .env
-```
-
-Obtén tu API Key gratuita en: https://www.wolframalpha.com/developers/
-
-### 3. Iniciar servicios
-
-```bash
-# Opción A: Con script conveniente
-./scripts.sh up
-
-# Opción B: Con docker compose directo
 docker compose up -d --build
 ```
 
-### 4. Verificar
+Para otra arquitectura (p. ej. Raspberry Pi): `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o beanie .`
+
+### Claude Desktop
+
+```json
+{ "mcpServers": { "beanie": { "command": "/ruta/a/beanie" } } }
+```
+
+## Configuración (variables de entorno)
+
+| Variable | Por defecto | |
+|---|---|---|
+| `MCP_TRANSPORT` | `stdio` | `stdio` o `http` |
+| `MCP_ADDR` | `:8090` | dirección en modo http |
+| `BEANIE_TIMEZONE` | `Europe/Madrid` | zona por defecto de `get_datetime` |
+| `BEANIE_MAX_CHARS` | `12000` | tope de caracteres por respuesta |
+| `BEANIE_CORS_ORIGINS` | vacío | orígenes permitidos, separados por comas (`*` para todos) |
+| `BEANIE_TOKEN` | vacío | exige `Authorization: Bearer <token>` en modo http |
+| `BEANIE_ALLOW_PRIVATE` | vacío | `1` permite que `web_fetch` acceda a IPs locales/privadas |
+
+## Seguridad
+
+- No ejecuta comandos de shell ni código: ninguna entrada del modelo llega a un proceso externo.
+- `web_fetch` bloquea por defecto direcciones locales y privadas (comprobado tras resolver DNS y en cada redirección), para que una página no pueda hacer que el modelo explore tu red.
+- Descargas limitadas a 2 MB y 15 s; cada llamada a una tool tiene un límite de 30 s.
+
+## Tests
 
 ```bash
-./scripts.sh ps
-./scripts.sh logs-mcp
+go test ./...
 ```
-
-## Documentación
-
-- **[DOCKER_COMPOSE.md](./DOCKER_COMPOSE.md)** - Setup detallado de Docker
-- **[tools.yaml](./tools.yaml)** - Definición de todas las herramientas disponibles
-- **[main.go](./main.go)** - Código fuente del servidor
-
-## Uso común
-
-### Ver estado
-```bash
-./scripts.sh ps
-```
-
-### Ver logs
-```bash
-./scripts.sh logs              # Todos los servicios
-./scripts.sh logs-mcp          # Solo MCP server
-./scripts.sh logs-kiwix        # Solo Kiwix
-```
-
-### Ejecutar comando en el contenedor
-```bash
-./scripts.sh exec ls -la /app
-./scripts.sh exec python3 --version
-```
-
-### Abrir shell interactivo
-```bash
-./scripts.sh shell
-```
-
-### Detener servicios
-```bash
-./scripts.sh down
-```
-
-### Limpiar todo (incluida base de datos)
-```bash
-./scripts.sh clean
-```
-
-## Servicios
-
-| Servicio | Puerto | Tipo | Descripción |
-|----------|--------|------|-------------|
-| **MCP Server** | stdio | IPC | Servidor MCP principal |
-| **Kiwix** | 8080 | HTTP | Wikipedia offline (opcional) |
-
-## Configuración
-
-Variables en `.env`:
-
-```env
-# Wolfram Alpha API Key (obtén en https://www.wolframalpha.com/developers/)
-WOLFRAM_APPID=your-api-key
-
-# Nivel de logging (debug, info, warn, error)
-LOG_LEVEL=info
-```
-
-## Integrando con Claude/Copilot
-
-El servidor expone herramientas vía MCP que pueden ser consumidas por:
-- Claude Desktop
-- VS Code + GitHub Copilot
-- Cualquier cliente MCP compatible
-
-Ver documentación oficial: https://modelcontextprotocol.io
-
-## Troubleshooting
-
-### "connection refused" a Kiwix
-```bash
-# Kiwix tarda 30-60s en iniciar
-sleep 60
-./scripts.sh logs-kiwix
-```
-
-### Puerto en uso
-Edita `docker-compose.yml` y cambia los puertos.
-
-### Wolfram Alpha no funciona
-- Verifica `WOLFRAM_APPID` en `.env`
-- Comprueba conexión a internet
-- Ver logs: `./scripts.sh logs-mcp`
-
-### Espacio en disco bajo
-```bash
-# Limpiar imágenes y contenedores no usados
-docker system prune -a
-```
-
-## Licencia
-
-[LICENSE](./LICENSE)
-
-## Contribuciones
-
-Las contribuciones son bienvenidas. Por favor:
-1. Fork el proyecto
-2. Crea una rama (`git checkout -b feature/mejora`)
-3. Commit (`git commit -am 'Agrega mejora'`)
-4. Push (`git push origin feature/mejora`)
-5. Abre un Pull Request
-
-## Soporte
-
-Para reportar bugs o solicitar features, abre un Issue en GitHub.
-
----
-
-**Hecho para Raspberry Pi**
