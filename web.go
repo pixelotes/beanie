@@ -253,7 +253,10 @@ func htmlToText(doc *node) (title, text string) {
 // web_search: plain DuckDuckGo Lite scraper, no API key.
 // ---------------------------------------------------------------------------
 
-type searchResult struct{ title, url, snippet string }
+type searchResult struct {
+	title, url, snippet string
+	ad                  bool
+}
 
 // Pages read per search so the model gets content, not just links.
 const (
@@ -361,14 +364,27 @@ func indent(s, prefix string) string {
 }
 
 func searchDDG(ctx context.Context, query string) ([]searchResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://lite.duckduckgo.com/lite/",
-		strings.NewReader(url.Values{"q": {query}, "kl": {"es-es"}}.Encode()))
-	if err != nil {
-		return nil, err
-	}
-	resp, err := do(req, browserUA, map[string]string{"Content-Type": "application/x-www-form-urlencoded"})
-	if err != nil {
-		return nil, err
+	form := url.Values{"q": {query}, "kl": {"es-es"}}.Encode()
+	var resp *response
+	// DuckDuckGo sometimes resets automated connections; one retry after a
+	// short pause usually gets through.
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://lite.duckduckgo.com/lite/", strings.NewReader(form))
+		if err != nil {
+			return nil, err
+		}
+		resp, err = do(req, browserUA, map[string]string{"Content-Type": "application/x-www-form-urlencoded"})
+		if err == nil {
+			break
+		}
+		if attempt == 1 || errors.Is(err, errPrivate) {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(time.Second):
+		}
 	}
 	return parseDDG(resp.status, decodeBody(resp.body, resp.contentType))
 }
@@ -393,7 +409,8 @@ func parseDDG(status int, body string) ([]searchResult, error) {
 			class := " " + n.attr("class") + " "
 			switch {
 			case n.tag == "a" && strings.Contains(class, " result-link "):
-				out = append(out, searchResult{title: nodeText(n), url: ddgURL(n.attr("href"))})
+				target := ddgURL(n.attr("href"))
+				out = append(out, searchResult{title: nodeText(n), url: target, ad: isDDGAd(target)})
 				return
 			case n.tag == "td" && strings.Contains(class, " result-snippet ") && len(out) > 0:
 				out[len(out)-1].snippet = nodeText(n)
@@ -406,7 +423,13 @@ func parseDDG(status int, body string) ([]searchResult, error) {
 	}
 	walk(doc)
 	if len(out) > 0 {
-		return out, nil
+		results := out[:0]
+		for _, r := range out {
+			if !r.ad {
+				results = append(results, r)
+			}
+		}
+		return results, nil
 	}
 	if status == http.StatusAccepted {
 		return nil, errDDGBlocked
@@ -418,6 +441,14 @@ func parseDDG(status int, body string) ([]searchResult, error) {
 		}
 	}
 	return nil, nil
+}
+
+// isDDGAd spots sponsored entries: organic results are unwrapped to the
+// target site, so anything still pointing at duckduckgo.com is an ad
+// (y.js click-through) or its "more info" link.
+func isDDGAd(target string) bool {
+	u, err := url.Parse(target)
+	return err == nil && (u.Host == "duckduckgo.com" || strings.HasSuffix(u.Host, ".duckduckgo.com"))
 }
 
 // ddgURL unwraps DuckDuckGo redirect links (//duckduckgo.com/l/?uddg=...).
