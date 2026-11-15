@@ -126,7 +126,7 @@ const toolTimeout = 30 * time.Second
 
 // handle processes one request; it returns nil for notifications.
 func (s *Server) handle(ctx context.Context, req rpcRequest) *rpcResponse {
-	if len(req.ID) == 0 { // notification (notifications/initialized, cancelled...)
+	if len(req.ID) == 0 { // notification (notifications/initialized, canceled...)
 		return nil
 	}
 	resp := &rpcResponse{JSONRPC: "2.0", ID: req.ID}
@@ -239,7 +239,7 @@ func (s *Server) ServeStdio() error {
 			run := func(line []byte) {
 				if out := s.handleRaw(context.Background(), line); out != nil {
 					mu.Lock()
-					os.Stdout.Write(append(out, '\n'))
+					_, _ = os.Stdout.Write(append(out, '\n'))
 					mu.Unlock()
 				}
 			}
@@ -308,13 +308,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(out)
+	_, _ = w.Write(out)
 }
 
 func (s *Server) ListenHTTP(addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", s)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok\n") })
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("%s %s escuchando en http://%s/mcp", s.name, s.version, addr)
 	return srv.ListenAndServe()

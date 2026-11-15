@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"pixelotes-mcp/calc"
+	"github.com/pixelotes/beanie/calc"
 )
 
 const version = "4.0.0"

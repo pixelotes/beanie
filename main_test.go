@@ -14,7 +14,7 @@ func TestProtocol(t *testing.T) {
 	var init struct {
 		Result struct{ ProtocolVersion string } `json:"result"`
 	}
-	json.Unmarshal(s.handleRaw(ctx, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`)), &init)
+	_ = json.Unmarshal(s.handleRaw(ctx, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`)), &init)
 	if init.Result.ProtocolVersion != "2024-11-05" {
 		t.Errorf("version negotiation: %+v", init)
 	}

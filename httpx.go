@@ -98,15 +98,15 @@ func do(req *http.Request, ua string, header map[string]string) (*response, erro
 		if errors.As(err, &ue) && ue.Timeout() {
 			return nil, fmt.Errorf("tiempo de espera agotado al conectar con %s", req.URL.Host)
 		}
-		return nil, fmt.Errorf("no se pudo conectar con %s: %v", req.URL.Host, err)
+		return nil, fmt.Errorf("no se pudo conectar con %s: %w", req.URL.Host, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("el servidor respondió %s", resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
-		return nil, fmt.Errorf("error leyendo la respuesta: %v", err)
+		return nil, fmt.Errorf("error leyendo la respuesta: %w", err)
 	}
 	return &response{body: body, contentType: resp.Header.Get("Content-Type"), finalURL: resp.Request.URL.String()}, nil
 }
