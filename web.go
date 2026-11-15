@@ -270,12 +270,27 @@ func webSearch(ctx context.Context, query string, n int, withContent bool) (stri
 	if query == "" {
 		return "", fmt.Errorf("la búsqueda está vacía")
 	}
+	note := ""
+	var exaErr error
+	if exaEnabled() {
+		out, err := exaSearch(ctx, query, n)
+		if err == nil {
+			return window(out, 0) + "\n\n(Resultados de Exa. Usa web_fetch con una URL para leer la página completa.)", nil
+		}
+		exaErr = err
+		note = fmt.Sprintf("(Exa no disponible: %v. Resultados de DuckDuckGo.)\n\n", err)
+	}
+
 	results, err := searchDDG(ctx, query)
 	if err != nil {
+		if exaErr != nil {
+			// Both backends failed: say so, or the model only sees the second error.
+			return "", fmt.Errorf("ni Exa (%w) ni DuckDuckGo responden: %w", exaErr, err)
+		}
 		return "", err
 	}
 	if len(results) == 0 {
-		return "Sin resultados. Prueba con otras palabras.", nil
+		return note + "Sin resultados. Prueba con otras palabras.", nil
 	}
 	if len(results) > n {
 		results = results[:n]
@@ -299,6 +314,7 @@ func webSearch(ctx context.Context, query string, n int, withContent bool) (stri
 	}
 
 	var b strings.Builder
+	b.WriteString(note)
 	for i, r := range results {
 		fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, r.title, r.url)
 		if excerpts[i] != "" {

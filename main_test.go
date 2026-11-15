@@ -178,3 +178,26 @@ func TestDDGAds(t *testing.T) {
 		t.Error("organic link flagged as ad")
 	}
 }
+
+func TestSSEData(t *testing.T) {
+	sse := "event: message\r\ndata: {\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Title: A\\nURL: https://a.example\"}]}}\r\n\r\n"
+	if got := string(sseData([]byte(sse))); !strings.HasPrefix(got, `{"result"`) {
+		t.Errorf("sseData = %q", got)
+	}
+	if got := string(sseData([]byte(` {"a":1} `))); got != `{"a":1}` {
+		t.Errorf("plain JSON = %q", got)
+	}
+}
+
+func TestExaKeySource(t *testing.T) {
+	t.Setenv("EXA_API_KEY", "from-env")
+	if k := exaKey(context.Background()); k != "from-env" {
+		t.Errorf("env key = %q", k)
+	}
+	if k := exaKey(withExaKey(context.Background(), " from-header ")); k != "from-header" {
+		t.Errorf("header key = %q", k)
+	}
+	if k := exaKey(withExaKey(context.Background(), "")); k != "from-env" {
+		t.Errorf("empty header should fall back to env, got %q", k)
+	}
+}

@@ -33,7 +33,7 @@ func tools() []Tool {
 			num("start_index", startDesc)),
 
 		newTool("web_search", "Buscar en la web",
-			"Busca en internet (DuckDuckGo) y devuelve títulos, URLs y un extracto del contenido de los primeros resultados. Úsala para noticias, datos actuales o cualquier cosa que no sepas.",
+			"Busca en internet (Exa, con DuckDuckGo como respaldo) y devuelve títulos, URLs y extractos del contenido de los resultados. Úsala para noticias, datos actuales o cualquier cosa que no sepas.",
 			func(ctx context.Context, a Args) (string, error) {
 				q, err := a.Require("query")
 				if err != nil {
@@ -43,7 +43,7 @@ func tools() []Tool {
 			},
 			required(str("query", "Términos de búsqueda")),
 			num("max_results", "Número de resultados (1-10). Por defecto 6."),
-			boolean("include_content", "Adjuntar un extracto del contenido de los 3 primeros resultados. Por defecto true; usa false para una búsqueda rápida solo con enlaces.")),
+			boolean("include_content", "Solo para el respaldo de DuckDuckGo: adjuntar un extracto de los 3 primeros resultados. Por defecto true.")),
 
 		newTool("news", "Noticias",
 			"Titulares de actualidad con medio y fecha (Google News). Sin query devuelve las noticias destacadas del momento; con query, las noticias sobre ese tema. Úsala para cualquier pregunta sobre noticias o qué está pasando.",
