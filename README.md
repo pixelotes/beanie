@@ -12,7 +12,8 @@ Tool descriptions and output are in Spanish, since they are aimed at Spanish-spe
 | Tool | What it does | Backend |
 |---|---|---|
 | `web_fetch` | Downloads a page and returns its main text as Markdown | direct |
-| `web_search` | Web search | DuckDuckGo Lite (scraper, no API key) |
+| `web_search` | Web search, with an excerpt of the top 3 pages so the model gets content, not just links | DuckDuckGo Lite (scraper, no API key) |
+| `news` | Current headlines with source and time, or news on a topic | Google News RSS (no API key) |
 | `search_wikipedia` | Searches for articles | Wikipedia API |
 | `fetch_wikipedia` | Reads an article's intro, one section or the whole text | Wikipedia API |
 | `get_weather` | Current weather and a 1–7 day forecast | Open-Meteo (no API key) |

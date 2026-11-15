@@ -1,5 +1,5 @@
 // Beanie: a small MCP server for local models, standard library only.
-// Tools: web_fetch, web_search, search_wikipedia, fetch_wikipedia,
+// Tools: web_fetch, web_search, news, search_wikipedia, fetch_wikipedia,
 // get_weather, get_datetime, calculate.
 package main
 
@@ -33,16 +33,27 @@ func tools() []Tool {
 			num("start_index", startDesc)),
 
 		newTool("web_search", "Buscar en la web",
-			"Busca en internet (DuckDuckGo) y devuelve títulos, URLs y fragmentos. Úsala para noticias, datos actuales o cualquier cosa que no sepas.",
+			"Busca en internet (DuckDuckGo) y devuelve títulos, URLs y un extracto del contenido de los primeros resultados. Úsala para noticias, datos actuales o cualquier cosa que no sepas.",
 			func(ctx context.Context, a Args) (string, error) {
 				q, err := a.Require("query")
 				if err != nil {
 					return "", err
 				}
-				return webSearch(ctx, q, max(1, min(a.Int("max_results", 6), 10)))
+				return webSearch(ctx, q, max(1, min(a.Int("max_results", 6), 10)), a.Bool("include_content", true))
 			},
 			required(str("query", "Términos de búsqueda")),
-			num("max_results", "Número de resultados (1-10). Por defecto 6.")),
+			num("max_results", "Número de resultados (1-10). Por defecto 6."),
+			boolean("include_content", "Adjuntar un extracto del contenido de los 3 primeros resultados. Por defecto true; usa false para una búsqueda rápida solo con enlaces.")),
+
+		newTool("news", "Noticias",
+			"Titulares de actualidad con medio y fecha (Google News). Sin query devuelve las noticias destacadas del momento; con query, las noticias sobre ese tema. Úsala para cualquier pregunta sobre noticias o qué está pasando.",
+			func(ctx context.Context, a Args) (string, error) {
+				return news(ctx, a.String("query"), a.String("lang"), a.String("country"), max(1, min(a.Int("max_results", 10), 20)))
+			},
+			str("query", "Tema a buscar. Vacío para los titulares destacados."),
+			str("lang", "Idioma (es, en, fr...). Por defecto es."),
+			str("country", "País en dos letras (ES, MX, AR, US...). Por defecto el del idioma."),
+			num("max_results", "Número de titulares (1-20). Por defecto 10.")),
 
 		newTool("search_wikipedia", "Buscar en Wikipedia",
 			"Busca artículos de Wikipedia y devuelve títulos con una descripción breve. Úsala antes de fetch_wikipedia si no conoces el título exacto.",
@@ -115,7 +126,7 @@ func main() {
 	flag.Parse()
 
 	s := NewServer("beanie", version,
-		"Herramientas de consulta: web, Wikipedia, tiempo, fecha y cálculo. Usa calculate para cualquier operación numérica en lugar de calcular de cabeza.",
+		"Herramientas de consulta: web, noticias, Wikipedia, tiempo, fecha y cálculo. Usa calculate para cualquier operación numérica en lugar de calcular de cabeza.",
 		tools()...)
 
 	var err error

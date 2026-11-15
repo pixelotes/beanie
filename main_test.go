@@ -73,3 +73,13 @@ func TestWindow(t *testing.T) {
 		t.Errorf("window tail: %q", got)
 	}
 }
+
+func TestExcerpt(t *testing.T) {
+	text := "Lede paragraph that introduces the story in general terms.\n\n" +
+		"Unrelated paragraph about the weather and nothing else at all.\n\n" +
+		"The election results show the ruling party lost the election narrowly."
+	got := excerpt(text, "election results", 140)
+	if !strings.Contains(got, "election results show") || strings.Contains(got, "weather") {
+		t.Errorf("excerpt picked the wrong paragraphs: %q", got)
+	}
+}

@@ -50,6 +50,21 @@ func (a Args) Require(key string) (string, error) {
 	return "", fmt.Errorf("falta el parámetro obligatorio %q", key)
 }
 
+func (a Args) Bool(key string, def bool) bool {
+	switch v := a[key].(type) {
+	case bool:
+		return v
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "true", "1", "yes", "si", "sí":
+			return true
+		case "false", "0", "no":
+			return false
+		}
+	}
+	return def
+}
+
 func (a Args) Int(key string, def int) int {
 	switch v := a[key].(type) {
 	case float64:
@@ -68,9 +83,10 @@ type prop struct {
 	required        bool
 }
 
-func str(name, desc string) prop { return prop{name, "string", desc, false} }
-func num(name, desc string) prop { return prop{name, "integer", desc, false} }
-func required(p prop) prop       { p.required = true; return p }
+func str(name, desc string) prop     { return prop{name, "string", desc, false} }
+func boolean(name, desc string) prop { return prop{name, "boolean", desc, false} }
+func num(name, desc string) prop     { return prop{name, "integer", desc, false} }
+func required(p prop) prop           { p.required = true; return p }
 
 func newTool(name, title, desc string, h func(context.Context, Args) (string, error), props ...prop) Tool {
 	properties := map[string]any{}

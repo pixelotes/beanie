@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 	"unicode/utf8"
 )
 
@@ -31,38 +34,48 @@ func decodeBody(body []byte, contentType string) string {
 	return strings.ToValidUTF8(string(body), "�")
 }
 
-func webFetch(ctx context.Context, rawURL string, start int) (string, error) {
+type page struct{ title, text, url string }
+
+// fetchPage downloads a URL and extracts its readable text.
+func fetchPage(ctx context.Context, rawURL string) (*page, error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", fmt.Errorf("URL no válida %q: debe empezar por http:// o https://", rawURL)
+		return nil, fmt.Errorf("URL no válida %q: debe empezar por http:// o https://", rawURL)
 	}
 	resp, err := get(ctx, u.String(), browserUA, map[string]string{
 		"Accept": "text/html,application/xhtml+xml,text/plain,application/json;q=0.9,*/*;q=0.5",
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	ct := strings.ToLower(resp.contentType)
 	body := decodeBody(resp.body, resp.contentType)
-	var title, text string
+	p := &page{url: resp.finalURL}
 	switch {
 	case ct == "" || strings.Contains(ct, "html") || strings.Contains(ct, "xml"):
-		title, text = htmlToText(parseHTML(body))
+		p.title, p.text = htmlToText(parseHTML(body))
 	case strings.HasPrefix(ct, "text/") || strings.Contains(ct, "json") || strings.Contains(ct, "markdown"):
-		text = body
+		p.text = body
 	default:
-		return "", fmt.Errorf("tipo de contenido no soportado: %s (solo HTML y texto)", resp.contentType)
+		return nil, fmt.Errorf("tipo de contenido no soportado: %s (solo HTML y texto)", resp.contentType)
 	}
+	return p, nil
+}
 
-	head := "URL: " + resp.finalURL + "\n\n"
-	if title != "" {
-		head = "# " + title + "\n" + head
+func webFetch(ctx context.Context, rawURL string, start int) (string, error) {
+	p, err := fetchPage(ctx, rawURL)
+	if err != nil {
+		return "", err
 	}
-	if strings.TrimSpace(text) == "" {
+	head := "URL: " + p.url + "\n\n"
+	if p.title != "" {
+		head = "# " + p.title + "\n" + head
+	}
+	if strings.TrimSpace(p.text) == "" {
 		return head + "(La página no tiene texto legible; puede que necesite JavaScript.)", nil
 	}
-	return head + window(text, start), nil
+	return head + window(p.text, start), nil
 }
 
 var skipTags = set("script", "style", "noscript", "iframe", "svg", "nav", "header", "footer",
@@ -241,7 +254,14 @@ func htmlToText(doc *node) (title, text string) {
 
 type searchResult struct{ title, url, snippet string }
 
-func webSearch(ctx context.Context, query string, n int) (string, error) {
+// Pages read per search so the model gets content, not just links.
+const (
+	searchFetchN     = 3
+	searchExcerpt    = 1500
+	searchFetchLimit = 6 * time.Second
+)
+
+func webSearch(ctx context.Context, query string, n int, withContent bool) (string, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return "", fmt.Errorf("la búsqueda está vacía")
@@ -256,15 +276,87 @@ func webSearch(ctx context.Context, query string, n int) (string, error) {
 	if len(results) > n {
 		results = results[:n]
 	}
+
+	excerpts := make([]string, len(results))
+	if withContent {
+		fctx, cancel := context.WithTimeout(ctx, searchFetchLimit)
+		var wg sync.WaitGroup
+		for i := range results[:min(searchFetchN, len(results))] {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				if p, err := fetchPage(fctx, results[i].url); err == nil {
+					excerpts[i] = excerpt(p.text, query, searchExcerpt)
+				}
+			}(i)
+		}
+		wg.Wait()
+		cancel()
+	}
+
 	var b strings.Builder
 	for i, r := range results {
 		fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, r.title, r.url)
-		if r.snippet != "" {
+		if excerpts[i] != "" {
+			fmt.Fprintf(&b, "   Contenido:\n%s\n\n", indent(excerpts[i], "   > "))
+		} else if r.snippet != "" {
 			fmt.Fprintf(&b, "   %s\n", truncate(r.snippet, 300))
 		}
 	}
 	b.WriteString("\nUsa web_fetch con una URL para leer la página completa.")
 	return b.String(), nil
+}
+
+// excerpt keeps the paragraphs that best match the query, in page order,
+// up to limit characters; the first paragraph wins ties as it usually
+// carries the lede.
+func excerpt(text, query string, limit int) string {
+	paras := strings.Split(text, "\n\n")
+	terms := strings.Fields(strings.ToLower(query))
+	type scored struct{ i, score int }
+	var cands []scored
+	for i, p := range paras {
+		p = strings.TrimSpace(p)
+		if len([]rune(p)) < 40 || strings.HasPrefix(p, "#") {
+			continue
+		}
+		lp := strings.ToLower(p)
+		score := 0
+		for _, t := range terms {
+			if len(t) > 2 {
+				score += strings.Count(lp, t)
+			}
+		}
+		if len(cands) == 0 {
+			score++
+		}
+		cands = append(cands, scored{i, score})
+	}
+	sort.SliceStable(cands, func(a, b int) bool { return cands[a].score > cands[b].score })
+	keep := map[int]bool{}
+	total := 0
+	for _, c := range cands {
+		l := len([]rune(paras[c.i]))
+		if total+l > limit && total > 0 {
+			continue
+		}
+		keep[c.i] = true
+		total += l
+		if total >= limit {
+			break
+		}
+	}
+	var out []string
+	for i, p := range paras {
+		if keep[i] {
+			out = append(out, truncate(strings.TrimSpace(p), limit))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func indent(s, prefix string) string {
+	return prefix + strings.ReplaceAll(s, "\n", "\n"+prefix)
 }
 
 func searchDDG(ctx context.Context, query string) ([]searchResult, error) {
