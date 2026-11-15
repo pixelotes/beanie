@@ -1,45 +1,13 @@
-version: '3.8'
-
 services:
-  # --- 1. DESCARGADOR AUTOMÁTICO ---
-  zim-downloader:
-    image: alpine:latest
-    container_name: zim_downloader
-    volumes:
-      - ./data:/data
-    # El script comprueba si el archivo específico existe. 
-    # Si no, instala wget y lo descarga.
-    command: >
-      sh -c "if [ -f /data/wikipedia_es_top_mini_2026-01.zim ]; then 
-              echo '✅ El archivo ZIM ya existe. Saltando descarga.'; 
-            else 
-              echo '⬇️ Iniciando descarga de Wikipedia (Top Mini 2026)...';
-              apk add --no-cache wget && 
-              wget -c -O /data/wikipedia_es_top_mini_2026-01.zim https://download.kiwix.org/zim/wikipedia/wikipedia_es_top_mini_2026-01.zim;
-              echo '🎉 Descarga completada.';
-            fi"
-    restart: "no"
-
-  # --- 2. SERVIDOR KIWIX ---
-  kiwix:
-    image:  ghcr.io/kiwix/kiwix-serve:latest
-    container_name: kiwix_server
-    restart: unless-stopped
-    volumes:
-      - ./data:/data
-    # El asterisco hace que coja cualquier archivo ZIM que encuentre en la carpeta
-    command: "*.zim"
-    ports:
-      - "9090:8080"
-    depends_on:
-      - zim-downloader
-
-  # --- 3. TU AGENTE MCP ---
-  mcp-agent:
+  beanie:
     build: .
-    container_name: mcp_agent
-    # Network mode host para ver el puerto 8080 local y usar herramientas de red
-    network_mode: host
+    container_name: beanie
+    ports:
+      - "8090:8090"
     environment:
-      - WOLFRAM_APPID=${WOLFRAM_APPID}
+      - BEANIE_TIMEZONE=${BEANIE_TIMEZONE:-Europe/Madrid}
+      - BEANIE_CORS_ORIGINS=${BEANIE_CORS_ORIGINS:-}
+      - BEANIE_TOKEN=${BEANIE_TOKEN:-}
+    read_only: true
+    mem_limit: 64m
     restart: unless-stopped

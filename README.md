@@ -1,185 +1,91 @@
 # Beanie MCP Server
 
-Servidor Model Context Protocol (MCP) completo con herramientas de investigación, cálculo y web scraping. Diseñado para Raspberry Pi y otros sistemas embebidos.
+[![CI](https://github.com/pixelotes/beanie/actions/workflows/ci.yml/badge.svg)](https://github.com/pixelotes/beanie/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Características
+A minimal [Model Context Protocol](https://modelcontextprotocol.io) server for local models: **a single Go binary with no dependencies** (standard library only), ~7 MB on disk and ~15 MB of RAM.
 
-- **Servidor MCP** en Go con arquitectura de plugins
-- **Herramientas integradas**:
-  - Calculadora científica (Qalculate)
-  - Wolfram Alpha (requiere API Key)
-  - Wikipedia Offline (Kiwix)
-  - Web scraping inteligente (Jina AI + navegador stealth)
-  - Consultas meteorológicas
-  - Conversión de formatos (Pandoc)
-  
-- **Docker Compose** para despliegue simplificado
-- **Python 3.11** para scripts especializados
-- **Optimizado para ARM64** (Raspberry Pi 3/4/5)
+Tool descriptions and output are in Spanish, since they are aimed at Spanish-speaking chats.
 
-## Requisitos
+## Tools
 
-- Docker & Docker Compose v2.0+
-- 2GB RAM mínimo (4GB recomendado)
-- 15-20GB espacio en disco (si descargas Wikipedia offline)
-- Conexión a internet (para algunas herramientas)
+| Tool | What it does | Backend |
+|---|---|---|
+| `web_fetch` | Downloads a page and returns its main text as Markdown | direct |
+| `web_search` | Web search, with an excerpt of the top 3 pages so the model gets content, not just links | DuckDuckGo Lite (scraper, no API key) |
+| `news` | Current headlines with source and time, or news on a topic | Google News RSS (no API key) |
+| `search_wikipedia` | Searches for articles | Wikipedia API |
+| `fetch_wikipedia` | Reads an article's intro, one section or the whole text | Wikipedia API |
+| `get_weather` | Current weather and a 1–7 day forecast | Open-Meteo (no API key) |
+| `get_datetime` | Current date, time and weekday | local |
+| `calculate` | Expressions and one-unknown equations | local |
 
-### Instalar Docker
+`calculate` accepts loose syntax: `2+2`, `2 + 2`, `2×3`, `2x3`, `2**10`, `2,5 * 2` (decimal comma), `2(3+1)`, `√16`, `3²`, `sin(30°)`, `20% de 150`, `150 + 10%`, `5!`, `log(8, 2)`, `mcd(12, 18)`. Linear and quadratic equations are solved exactly (`x^2 - 5x + 6 = 0`); anything else numerically (`2^x = 1024`, `sin(x) = 0.5`).
 
-**Linux (Debian/Ubuntu):**
+Long responses are cut (12,000 characters by default) and tell the model which `start_index` to use to keep reading.
+
+## Usage
+
 ```bash
-bash install-docker.sh
-# Después: logout y login
+make build                               # or: go build -trimpath -ldflags="-s -w" -o beanie .
+./beanie                                 # stdio (Claude Desktop, etc.)
+./beanie -transport http -addr :8090     # HTTP at http://localhost:8090/mcp
 ```
 
-**macOS/Windows:**
-Descarga [Docker Desktop](https://www.docker.com/products/docker-desktop)
-
-## Inicio rápido
-
-### 1. Clonar y preparar
+With Docker (`scratch` image, ~8 MB):
 
 ```bash
-git clone <repo>
-cd raspberry-mcp-server
-cp .env.example .env
-```
-
-### 2. Configurar (Opcional pero recomendado)
-
-```bash
-# Editar .env y agregar WOLFRAM_APPID
-nano .env
-```
-
-Obtén tu API Key gratuita en: https://www.wolframalpha.com/developers/
-
-### 3. Iniciar servicios
-
-```bash
-# Opción A: Con script conveniente
-./scripts.sh up
-
-# Opción B: Con docker compose directo
 docker compose up -d --build
 ```
 
-### 4. Verificar
+Cross-compiling, e.g. for a Raspberry Pi:
 
 ```bash
-./scripts.sh ps
-./scripts.sh logs-mcp
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o beanie .
 ```
 
-## Documentación
+### Claude Desktop
 
-- **[DOCKER_COMPOSE.md](./DOCKER_COMPOSE.md)** - Setup detallado de Docker
-- **[tools.yaml](./tools.yaml)** - Definición de todas las herramientas disponibles
-- **[main.go](./main.go)** - Código fuente del servidor
+```json
+{ "mcpServers": { "beanie": { "command": "/path/to/beanie" } } }
+```
 
-## Uso común
+### Browser clients (llampart, llama.cpp web UI…)
 
-### Ver estado
+Run in HTTP mode and allow the UI's origin:
+
 ```bash
-./scripts.sh ps
+BEANIE_CORS_ORIGINS=https://chat.example.com ./beanie -transport http
 ```
 
-### Ver logs
+## Configuration
+
+| Variable | Default | |
+|---|---|---|
+| `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
+| `MCP_ADDR` | `:8090` | listen address in HTTP mode |
+| `BEANIE_TIMEZONE` | `Europe/Madrid` | default zone for `get_datetime` |
+| `BEANIE_MAX_CHARS` | `12000` | character cap per response |
+| `BEANIE_CORS_ORIGINS` | empty | comma-separated allowed origins (`*` for any) |
+| `BEANIE_TOKEN` | empty | require `Authorization: Bearer <token>` in HTTP mode |
+| `BEANIE_ALLOW_PRIVATE` | empty | `1` lets `web_fetch` reach local/private IPs |
+
+## Security
+
+- No shell commands or code execution: model input never reaches an external process.
+- `web_fetch` blocks loopback and private addresses by default (checked after DNS resolution and on every redirect), so a page cannot make the model probe your network.
+- Downloads are capped at 2 MB and 15 s; each tool call times out after 30 s.
+
+## Development
+
 ```bash
-./scripts.sh logs              # Todos los servicios
-./scripts.sh logs-mcp          # Solo MCP server
-./scripts.sh logs-kiwix        # Solo Kiwix
+make test    # go test -race ./...
+make lint    # golangci-lint run
+make fmt     # gofmt -w .
 ```
 
-### Ejecutar comando en el contenedor
-```bash
-./scripts.sh exec ls -la /app
-./scripts.sh exec python3 --version
-```
+The HTTP transport is stateless Streamable HTTP: `POST /mcp` with a JSON-RPC message returns a JSON reply. There are no sessions and no server-initiated streams. `GET /healthz` returns `ok`.
 
-### Abrir shell interactivo
-```bash
-./scripts.sh shell
-```
+## License
 
-### Detener servicios
-```bash
-./scripts.sh down
-```
-
-### Limpiar todo (incluida base de datos)
-```bash
-./scripts.sh clean
-```
-
-## Servicios
-
-| Servicio | Puerto | Tipo | Descripción |
-|----------|--------|------|-------------|
-| **MCP Server** | stdio | IPC | Servidor MCP principal |
-| **Kiwix** | 8080 | HTTP | Wikipedia offline (opcional) |
-
-## Configuración
-
-Variables en `.env`:
-
-```env
-# Wolfram Alpha API Key (obtén en https://www.wolframalpha.com/developers/)
-WOLFRAM_APPID=your-api-key
-
-# Nivel de logging (debug, info, warn, error)
-LOG_LEVEL=info
-```
-
-## Integrando con Claude/Copilot
-
-El servidor expone herramientas vía MCP que pueden ser consumidas por:
-- Claude Desktop
-- VS Code + GitHub Copilot
-- Cualquier cliente MCP compatible
-
-Ver documentación oficial: https://modelcontextprotocol.io
-
-## Troubleshooting
-
-### "connection refused" a Kiwix
-```bash
-# Kiwix tarda 30-60s en iniciar
-sleep 60
-./scripts.sh logs-kiwix
-```
-
-### Puerto en uso
-Edita `docker-compose.yml` y cambia los puertos.
-
-### Wolfram Alpha no funciona
-- Verifica `WOLFRAM_APPID` en `.env`
-- Comprueba conexión a internet
-- Ver logs: `./scripts.sh logs-mcp`
-
-### Espacio en disco bajo
-```bash
-# Limpiar imágenes y contenedores no usados
-docker system prune -a
-```
-
-## Licencia
-
-[LICENSE](./LICENSE)
-
-## Contribuciones
-
-Las contribuciones son bienvenidas. Por favor:
-1. Fork el proyecto
-2. Crea una rama (`git checkout -b feature/mejora`)
-3. Commit (`git commit -am 'Agrega mejora'`)
-4. Push (`git push origin feature/mejora`)
-5. Abre un Pull Request
-
-## Soporte
-
-Para reportar bugs o solicitar features, abre un Issue en GitHub.
-
----
-
-**Hecho para Raspberry Pi**
+[MIT](LICENSE)
