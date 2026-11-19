@@ -304,7 +304,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Access-Control-Allow-Origin", map[bool]string{true: "*", false: origin}[wildcard])
 		h.Set("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS")
-		h.Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID")
+		h.Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, X-Exa-Api-Key, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID")
 		h.Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
 		h.Set("Vary", "Origin")
 	}
@@ -338,7 +338,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
-	out := s.handleRaw(r.Context(), body)
+	out := s.handleRaw(withExaKey(r.Context(), r.Header.Get(ExaKeyHeader)), body)
 	if out == nil {
 		w.WriteHeader(http.StatusAccepted)
 		return

@@ -166,3 +166,38 @@ func TestParseDDG(t *testing.T) {
 		t.Errorf("no results: %+v, %v", res, err)
 	}
 }
+
+func TestDDGAds(t *testing.T) {
+	if !isDDGAd("https://duckduckgo.com/y.js?ad_domain=cleverfiles.com&ad_provider=bingv7aa") {
+		t.Error("ad link not detected")
+	}
+	if !isDDGAd(ddgURL("https://duckduckgo.com/duckduckgo-help-pages/company/ads-by-microsoft-on-duckduckgo-private-search/")) {
+		t.Error("ad info link not detected")
+	}
+	if isDDGAd(ddgURL("//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com")) || isDDGAd("https://example.com/y.js") {
+		t.Error("organic link flagged as ad")
+	}
+}
+
+func TestSSEData(t *testing.T) {
+	sse := "event: message\r\ndata: {\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Title: A\\nURL: https://a.example\"}]}}\r\n\r\n"
+	if got := string(sseData([]byte(sse))); !strings.HasPrefix(got, `{"result"`) {
+		t.Errorf("sseData = %q", got)
+	}
+	if got := string(sseData([]byte(` {"a":1} `))); got != `{"a":1}` {
+		t.Errorf("plain JSON = %q", got)
+	}
+}
+
+func TestExaKeySource(t *testing.T) {
+	t.Setenv("EXA_API_KEY", "from-env")
+	if k := exaKey(context.Background()); k != "from-env" {
+		t.Errorf("env key = %q", k)
+	}
+	if k := exaKey(withExaKey(context.Background(), " from-header ")); k != "from-header" {
+		t.Errorf("header key = %q", k)
+	}
+	if k := exaKey(withExaKey(context.Background(), "")); k != "from-env" {
+		t.Errorf("empty header should fall back to env, got %q", k)
+	}
+}
