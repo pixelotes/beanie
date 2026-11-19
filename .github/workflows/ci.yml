@@ -56,10 +56,13 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: go build -trimpath -ldflags="-s -w" -o beanie-${{ matrix.goos }}-${{ matrix.goarch }} .
-      - uses: actions/upload-artifact@v4
+      # PRs only check that it builds; binaries are kept briefly, from main only.
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
         with:
           name: beanie-${{ matrix.goos }}-${{ matrix.goarch }}
           path: beanie-*
+          retention-days: 7
 
   docker:
     needs: [test]

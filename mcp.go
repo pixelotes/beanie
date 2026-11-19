@@ -6,10 +6,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -109,12 +111,22 @@ type Server struct {
 	name, version, instructions string
 	tools                       []Tool
 	byName                      map[string]*Tool
+
+	// HTTP mode only, read from BEANIE_TOKEN and BEANIE_CORS_ORIGINS.
+	token   string
+	origins []string
 }
 
 func NewServer(name, version, instructions string, tools ...Tool) *Server {
 	s := &Server{name: name, version: version, instructions: instructions, tools: tools, byName: map[string]*Tool{}}
 	for i := range s.tools {
 		s.byName[s.tools[i].Name] = &s.tools[i]
+	}
+	s.token = os.Getenv("BEANIE_TOKEN")
+	for _, o := range strings.Split(os.Getenv("BEANIE_CORS_ORIGINS"), ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			s.origins = append(s.origins, o)
+		}
 	}
 	return s
 }
@@ -280,18 +292,21 @@ func (s *Server) ServeStdio() error {
 // ServeHTTP implements stateless Streamable HTTP: POST a JSON-RPC message,
 // get a JSON reply. No sessions, no server-initiated streams.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if origins := os.Getenv("BEANIE_CORS_ORIGINS"); origins != "" {
-		origin := r.Header.Get("Origin")
-		for _, o := range strings.Split(origins, ",") {
-			if o = strings.TrimSpace(o); o == "*" || o == origin {
-				w.Header().Set("Access-Control-Allow-Origin", map[bool]string{true: "*", false: origin}[o == "*"])
-				w.Header().Set("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID")
-				w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
-				w.Header().Set("Vary", "Origin")
-				break
-			}
+	// Requests from a browser page carry Origin. The MCP spec requires
+	// rejecting unknown origins (DNS rebinding); clients that are not browsers
+	// send no Origin and go on to the token check.
+	if origin := r.Header.Get("Origin"); origin != "" {
+		allowed, wildcard := s.originAllowed(origin)
+		if !allowed {
+			http.Error(w, "Forbidden origin", http.StatusForbidden)
+			return
 		}
+		h := w.Header()
+		h.Set("Access-Control-Allow-Origin", map[bool]string{true: "*", false: origin}[wildcard])
+		h.Set("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS")
+		h.Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID")
+		h.Set("Access-Control-Expose-Headers", "Mcp-Session-Id")
+		h.Set("Vary", "Origin")
 	}
 
 	switch r.Method {
@@ -308,9 +323,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if token := os.Getenv("BEANIE_TOKEN"); token != "" && r.Header.Get("Authorization") != "Bearer "+token {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+	if s.token != "" {
+		got := []byte(r.Header.Get("Authorization"))
+		want := []byte("Bearer " + s.token)
+		if subtle.ConstantTimeCompare(got, want) != 1 {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
@@ -327,7 +347,41 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(out)
 }
 
+// originAllowed reports whether a browser Origin may call the server, and
+// whether it was let in by the "*" wildcard.
+func (s *Server) originAllowed(origin string) (allowed, wildcard bool) {
+	for _, o := range s.origins {
+		if o == "*" {
+			return true, true
+		}
+		if strings.EqualFold(o, origin) {
+			return true, false
+		}
+	}
+	return false, false
+}
+
+// isLoopback reports whether a listen address only accepts local connections.
+func isLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func (s *Server) ListenHTTP(addr string) error {
+	if s.token == "" && !isLoopback(addr) {
+		if os.Getenv("BEANIE_INSECURE_NO_TOKEN") != "1" {
+			return fmt.Errorf("%s no es una dirección local y BEANIE_TOKEN está vacío: define un token, "+
+				"escucha en 127.0.0.1 o, si algo delante ya autentica, pon BEANIE_INSECURE_NO_TOKEN=1", addr)
+		}
+		log.Printf("aviso: escuchando en %s sin BEANIE_TOKEN (BEANIE_INSECURE_NO_TOKEN=1)", addr)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", s)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "ok\n") })

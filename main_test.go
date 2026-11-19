@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 )
@@ -81,5 +85,84 @@ func TestExcerpt(t *testing.T) {
 	got := excerpt(text, "election results", 140)
 	if !strings.Contains(got, "election results show") || strings.Contains(got, "weather") {
 		t.Errorf("excerpt picked the wrong paragraphs: %q", got)
+	}
+}
+
+func TestIsPublic(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"1.1.1.1": true, "2606:4700:4700::1111": true, "8.8.8.8": true,
+		"127.0.0.1": false, "10.0.0.1": false, "192.168.1.1": false, "172.16.0.1": false,
+		"169.254.169.254": false, "100.64.0.1": false, "100.127.255.254": false,
+		"0.0.0.0": false, "0.1.2.3": false, "198.18.0.1": false, "255.255.255.255": false,
+		"::1": false, "::": false, "fe80::1": false, "fd00::1": false,
+		"::ffff:127.0.0.1": false, "::ffff:1.1.1.1": true,
+		"64:ff9b::7f00:1": false, "2002:7f00:1::": false, "2001:0:7f00:1::": false,
+	} {
+		if got := isPublic(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("isPublic(%s) = %v, want %v", addr, got, want)
+		}
+	}
+}
+
+func TestHTTPAuthAndOrigin(t *testing.T) {
+	s := NewServer("beanie", version, "", tools()...)
+	s.token = "secret"
+	s.origins = []string{"https://chat.example.com"}
+	ping := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+
+	for _, c := range []struct {
+		name, origin, auth string
+		want               int
+	}{
+		{"no origin, good token", "", "Bearer secret", http.StatusOK},
+		{"allowed origin", "https://chat.example.com", "Bearer secret", http.StatusOK},
+		{"unknown origin", "https://evil.example", "Bearer secret", http.StatusForbidden},
+		{"missing token", "", "", http.StatusUnauthorized},
+		{"wrong token", "", "Bearer nope", http.StatusUnauthorized},
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/mcp", strings.NewReader(ping))
+		if c.origin != "" {
+			req.Header.Set("Origin", c.origin)
+		}
+		if c.auth != "" {
+			req.Header.Set("Authorization", c.auth)
+		}
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("%s: status %d, want %d", c.name, rec.Code, c.want)
+		}
+	}
+}
+
+func TestListenNeedsTokenOffLoopback(t *testing.T) {
+	t.Setenv("BEANIE_INSECURE_NO_TOKEN", "")
+	s := NewServer("beanie", version, "", tools()...)
+	s.token = ""
+	if err := s.ListenHTTP(":0"); err == nil || !strings.Contains(err.Error(), "BEANIE_TOKEN") {
+		t.Errorf("ListenHTTP on all interfaces without a token: %v", err)
+	}
+	for addr, want := range map[string]bool{"127.0.0.1:8090": true, "localhost:1": true, "[::1]:1": true, ":8090": false, "0.0.0.0:1": false} {
+		if got := isLoopback(addr); got != want {
+			t.Errorf("isLoopback(%q) = %v", addr, got)
+		}
+	}
+}
+
+func TestParseDDG(t *testing.T) {
+	ok := `<table><tr><td><a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2F">Example</a></td></tr>
+<tr><td class="result-snippet">An example page.</td></tr></table>`
+	res, err := parseDDG(http.StatusOK, ok)
+	if err != nil || len(res) != 1 || res[0].url != "https://example.com/" || res[0].snippet != "An example page." {
+		t.Errorf("results: %+v, %v", res, err)
+	}
+	if _, err := parseDDG(http.StatusAccepted, "<html><body></body></html>"); !errors.Is(err, errDDGBlocked) {
+		t.Errorf("status 202: %v", err)
+	}
+	if _, err := parseDDG(http.StatusOK, `<div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div>`); !errors.Is(err, errDDGBlocked) {
+		t.Errorf("challenge page: %v", err)
+	}
+	if res, err := parseDDG(http.StatusOK, "<p>No results.</p>"); err != nil || len(res) != 0 {
+		t.Errorf("no results: %+v, %v", res, err)
 	}
 }

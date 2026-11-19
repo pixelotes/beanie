@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -271,7 +272,7 @@ func webSearch(ctx context.Context, query string, n int, withContent bool) (stri
 		return "", err
 	}
 	if len(results) == 0 {
-		return "Sin resultados. Prueba con otras palabras (si se repite, DuckDuckGo puede estar limitando las peticiones).", nil
+		return "Sin resultados. Prueba con otras palabras.", nil
 	}
 	if len(results) > n {
 		results = results[:n]
@@ -369,7 +370,21 @@ func searchDDG(ctx context.Context, query string) ([]searchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc := parseHTML(decodeBody(resp.body, resp.contentType))
+	return parseDDG(resp.status, decodeBody(resp.body, resp.contentType))
+}
+
+// Markers of DuckDuckGo's anti-bot page, which it serves (often with status
+// 202) to rate-limited clients and to many datacenter IPs.
+var ddgBlockMarkers = []string{"anomaly-modal", "challenge-form", "bots use duckduckgo", "/anomaly.js"}
+
+var errDDGBlocked = errors.New("DuckDuckGo ha bloqueado la búsqueda (límite de peticiones o comprobación anti-bots). " +
+	"Vuelve a intentarlo más tarde; mientras, usa news o search_wikipedia, o web_fetch con una URL concreta")
+
+// parseDDG extracts results from a DuckDuckGo Lite page. An empty page that
+// looks like the anti-bot challenge is an error, not "no results", so the
+// model does not conclude that nothing exists.
+func parseDDG(status int, body string) ([]searchResult, error) {
+	doc := parseHTML(body)
 
 	var out []searchResult
 	var walk func(*node)
@@ -390,7 +405,19 @@ func searchDDG(ctx context.Context, query string) ([]searchResult, error) {
 		}
 	}
 	walk(doc)
-	return out, nil
+	if len(out) > 0 {
+		return out, nil
+	}
+	if status == http.StatusAccepted {
+		return nil, errDDGBlocked
+	}
+	lower := strings.ToLower(body)
+	for _, m := range ddgBlockMarkers {
+		if strings.Contains(lower, m) {
+			return nil, errDDGBlocked
+		}
+	}
+	return nil, nil
 }
 
 // ddgURL unwraps DuckDuckGo redirect links (//duckduckgo.com/l/?uddg=...).

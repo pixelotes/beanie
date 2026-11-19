@@ -3,11 +3,14 @@ services:
     build: .
     container_name: beanie
     ports:
-      - "8090:8090"
+      # Only this machine can reach it; publish on other interfaces only with BEANIE_TOKEN set.
+      - "127.0.0.1:8090:8090"
     environment:
       - BEANIE_TIMEZONE=${BEANIE_TIMEZONE:-Europe/Madrid}
       - BEANIE_CORS_ORIGINS=${BEANIE_CORS_ORIGINS:-}
       - BEANIE_TOKEN=${BEANIE_TOKEN:-}
+      # Inside the container beanie listens on :8090, which needs a token unless this is 1.
+      - BEANIE_INSECURE_NO_TOKEN=${BEANIE_INSECURE_NO_TOKEN:-1}
     read_only: true
     mem_limit: 64m
     restart: unless-stopped

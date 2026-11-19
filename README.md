@@ -29,10 +29,10 @@ Long responses are cut (12,000 characters by default) and tell the model which `
 ```bash
 make build                               # or: go build -trimpath -ldflags="-s -w" -o beanie .
 ./beanie                                 # stdio (Claude Desktop, etc.)
-./beanie -transport http -addr :8090     # HTTP at http://localhost:8090/mcp
+./beanie -transport http                # HTTP at http://127.0.0.1:8090/mcp
 ```
 
-With Docker (`scratch` image, ~8 MB):
+With Docker (`scratch` image, ~8 MB; the port is published on 127.0.0.1 only):
 
 ```bash
 docker compose up -d --build
@@ -52,7 +52,7 @@ GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bea
 
 ### Browser clients (llampart, llama.cpp web UI…)
 
-Run in HTTP mode and allow the UI's origin:
+Run in HTTP mode and allow the UI's origin (requests from any other browser origin get 403):
 
 ```bash
 BEANIE_CORS_ORIGINS=https://chat.example.com ./beanie -transport http
@@ -63,17 +63,21 @@ BEANIE_CORS_ORIGINS=https://chat.example.com ./beanie -transport http
 | Variable | Default | |
 |---|---|---|
 | `MCP_TRANSPORT` | `stdio` | `stdio` or `http` |
-| `MCP_ADDR` | `:8090` | listen address in HTTP mode |
+| `MCP_ADDR` | `127.0.0.1:8090` | listen address in HTTP mode |
 | `BEANIE_TIMEZONE` | `Europe/Madrid` | default zone for `get_datetime` |
 | `BEANIE_MAX_CHARS` | `12000` | character cap per response |
-| `BEANIE_CORS_ORIGINS` | empty | comma-separated allowed origins (`*` for any) |
+| `BEANIE_CORS_ORIGINS` | empty | comma-separated browser origins allowed to call it (`*` for any); others get 403 |
 | `BEANIE_TOKEN` | empty | require `Authorization: Bearer <token>` in HTTP mode |
+| `BEANIE_INSECURE_NO_TOKEN` | empty | `1` allows listening on a non-loopback address without a token |
 | `BEANIE_ALLOW_PRIVATE` | empty | `1` lets `web_fetch` reach local/private IPs |
 
 ## Security
 
 - No shell commands or code execution: model input never reaches an external process.
-- `web_fetch` blocks loopback and private addresses by default (checked after DNS resolution and on every redirect), so a page cannot make the model probe your network.
+- Without `BEANIE_TOKEN`, HTTP mode refuses to listen on anything but loopback (unless `BEANIE_INSECURE_NO_TOKEN=1`). The token is compared in constant time.
+- Browser requests whose `Origin` is not in `BEANIE_CORS_ORIGINS` are rejected (DNS rebinding protection, as the MCP spec requires). Clients that are not browsers send no `Origin`.
+- Outgoing requests only reach public addresses by default (checked after DNS resolution and on every redirect): loopback, private, link-local (including cloud metadata), CGNAT, NAT64/6to4/Teredo and other special-purpose ranges are blocked, so a page cannot make the model probe your network.
+- When DuckDuckGo answers with its anti-bot page, `web_search` reports it as an error instead of "no results". Datacenter IPs are more likely to get it.
 - Downloads are capped at 2 MB and 15 s; each tool call times out after 30 s.
 
 ## Development
