@@ -9,6 +9,10 @@ services:
       - BEANIE_TIMEZONE=${BEANIE_TIMEZONE:-Europe/Madrid}
       - BEANIE_CORS_ORIGINS=${BEANIE_CORS_ORIGINS:-}
       - BEANIE_TOKEN=${BEANIE_TOKEN:-}
+      - BEANIE_SEARCH=${BEANIE_SEARCH:-}
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - JINA_API_KEY=${JINA_API_KEY:-}
       # Inside the container beanie listens on :8090, which needs a token unless this is 1.
       - BEANIE_INSECURE_NO_TOKEN=${BEANIE_INSECURE_NO_TOKEN:-1}
     read_only: true
