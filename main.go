@@ -122,7 +122,7 @@ func tools() []Tool {
 
 func main() {
 	transport := flag.String("transport", envOr("MCP_TRANSPORT", "stdio"), "stdio | http")
-	addr := flag.String("addr", envOr("MCP_ADDR", ":8090"), "dirección de escucha en modo http")
+	addr := flag.String("addr", envOr("MCP_ADDR", "127.0.0.1:8090"), "dirección de escucha en modo http")
 	flag.Parse()
 
 	s := NewServer("beanie", version,

@@ -16,7 +16,7 @@ fmt:
 	gofmt -w .
 
 run: build
-	./$(BIN) -transport http -addr :8090
+	./$(BIN) -transport http -addr 127.0.0.1:8090
 
 clean:
 	rm -f $(BIN)

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strconv"
@@ -28,9 +29,52 @@ var allowPrivate = os.Getenv("BEANIE_ALLOW_PRIVATE") == "1"
 
 var errPrivate = errors.New("dirección de red privada o local bloqueada")
 
-// httpClient refuses to connect to loopback/private/link-local addresses
-// (checked after DNS resolution, so redirects and rebinding are covered too):
-// a page read by the model must not be able to make it probe the LAN.
+// nonPublic lists special-purpose ranges that Go's netip helpers do not flag
+// (IANA special-purpose registries), plus IPv6 ranges that embed IPv4.
+var nonPublic = func() []netip.Prefix {
+	var out []netip.Prefix
+	for _, p := range []string{
+		"0.0.0.0/8",       // "this network"
+		"100.64.0.0/10",   // carrier-grade NAT (and Tailscale)
+		"192.0.0.0/24",    // IETF protocol assignments
+		"192.0.2.0/24",    // documentation
+		"192.88.99.0/24",  // 6to4 relay anycast
+		"198.18.0.0/15",   // benchmarking
+		"198.51.100.0/24", // documentation
+		"203.0.113.0/24",  // documentation
+		"240.0.0.0/4",     // reserved, includes broadcast
+		"64:ff9b::/96",    // NAT64, embeds an IPv4 address
+		"64:ff9b:1::/48",  // local-use NAT64
+		"100::/64",        // discard-only
+		"2001::/32",       // Teredo, embeds an IPv4 address
+		"2001:db8::/32",   // documentation
+		"2002::/16",       // 6to4, embeds an IPv4 address
+		"fec0::/10",       // deprecated site-local
+	} {
+		out = append(out, netip.MustParsePrefix(p))
+	}
+	return out
+}()
+
+// isPublic reports whether ip is a global unicast address on the public
+// internet: everything else (loopback, private, link-local, which includes
+// cloud metadata at 169.254.169.254, CGNAT, NAT64...) is refused.
+func isPublic(ip netip.Addr) bool {
+	ip = ip.Unmap()
+	if !ip.IsValid() || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return false
+	}
+	for _, p := range nonPublic {
+		if p.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+// httpClient only connects to public addresses (checked after DNS
+// resolution, so redirects and rebinding are covered too): a page read by
+// the model must not be able to make it probe the LAN or the host.
 var httpClient = &http.Client{
 	Timeout: reqTimeout,
 	Transport: &http.Transport{
@@ -41,13 +85,8 @@ var httpClient = &http.Client{
 				if allowPrivate {
 					return nil
 				}
-				host, _, err := net.SplitHostPort(address)
-				if err != nil {
-					return err
-				}
-				ip := net.ParseIP(host)
-				if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-					ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+				ap, err := netip.ParseAddrPort(address)
+				if err != nil || !isPublic(ap.Addr()) {
 					return errPrivate
 				}
 				return nil
@@ -70,6 +109,7 @@ var httpClient = &http.Client{
 }
 
 type response struct {
+	status      int
 	body        []byte
 	contentType string
 	finalURL    string
@@ -108,7 +148,7 @@ func do(req *http.Request, ua string, header map[string]string) (*response, erro
 	if err != nil {
 		return nil, fmt.Errorf("error leyendo la respuesta: %w", err)
 	}
-	return &response{body: body, contentType: resp.Header.Get("Content-Type"), finalURL: resp.Request.URL.String()}, nil
+	return &response{status: resp.StatusCode, body: body, contentType: resp.Header.Get("Content-Type"), finalURL: resp.Request.URL.String()}, nil
 }
 
 // window returns at most maxChars runes starting at start, plus a hint on how
