@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -199,5 +200,82 @@ func TestExaKeySource(t *testing.T) {
 	}
 	if k := exaKey(withExaKey(context.Background(), "")); k != "from-env" {
 		t.Errorf("empty header should fall back to env, got %q", k)
+	}
+}
+
+func TestParseSearchChain(t *testing.T) {
+	names := func(c []searchBackend) string {
+		var out []string
+		for _, b := range c {
+			out = append(out, b.name)
+		}
+		return strings.Join(out, ",")
+	}
+	var warnings []string
+	warn := func(f string, a ...any) { warnings = append(warnings, fmt.Sprintf(f, a...)) }
+	t.Setenv("TAVILY_API_KEY", "")
+	t.Setenv("JINA_API_KEY", "k")
+
+	if got := names(parseSearchChain("", warn)); got != "duckduckgo" {
+		t.Errorf("default chain: %s", got)
+	}
+	if got := names(parseSearchChain(" Exa, tavily ,jina,ddg,exa,bing", warn)); got != "exa,tavily,jina,duckduckgo" {
+		t.Errorf("chain: %s", got)
+	}
+	joined := strings.Join(warnings, "\n")
+	if !strings.Contains(joined, `"bing"`) || !strings.Contains(joined, "TAVILY_API_KEY") || strings.Contains(joined, "JINA_API_KEY") {
+		t.Errorf("warnings: %s", joined)
+	}
+	if got := names(parseSearchChain("bing", warn)); got != "duckduckgo" {
+		t.Errorf("only unknown names: %s", got)
+	}
+}
+
+func TestRunSearchChain(t *testing.T) {
+	backend := func(label string, out string, err error) searchBackend {
+		return searchBackend{label, label, func(context.Context, string, int, bool) (string, error) { return out, err }}
+	}
+	ctx := context.Background()
+
+	out, err := runSearchChain(ctx, []searchBackend{
+		backend("A", "", errNoKey),
+		backend("B", "", errors.New("HTTP 500")),
+		backend("C", "1. result", nil),
+		backend("D", "never", nil),
+	}, "q", 5, true)
+	if err != nil || !strings.HasPrefix(out, "(B: HTTP 500. Resultados de C.)") || strings.Contains(out, "A:") ||
+		!strings.Contains(out, "1. result") || strings.Contains(out, "never") {
+		t.Errorf("fallback: %q, %v", out, err)
+	}
+
+	out, err = runSearchChain(ctx, []searchBackend{backend("A", "", errNoResults), backend("B", "", errNoResults)}, "q", 5, true)
+	if err != nil || !strings.HasPrefix(out, "Sin resultados") {
+		t.Errorf("all empty: %q, %v", out, err)
+	}
+
+	_, err = runSearchChain(ctx, []searchBackend{backend("A", "", errNoResults), backend("B", "", errDDGBlocked)}, "q", 5, true)
+	if !errors.Is(err, errDDGBlocked) || !strings.Contains(err.Error(), "A: sin resultados") {
+		t.Errorf("all failed: %v", err)
+	}
+}
+
+func TestParseTavilyAndJina(t *testing.T) {
+	tv, err := parseTavily([]byte(`{"query":"q","results":[{"title":" T ","url":"https://t.example/","content":"Tavily extract","score":0.9},{"title":"no url"}]}`))
+	if err != nil || len(tv) != 1 || tv[0].title != "T" || tv[0].snippet != "Tavily extract" {
+		t.Errorf("tavily: %+v, %v", tv, err)
+	}
+	jn, err := parseJina([]byte(`{"code":200,"data":[{"title":"J","url":"https://j.example/","description":"Jina desc"}]}`))
+	if err != nil || len(jn) != 1 || jn[0].url != "https://j.example/" || jn[0].snippet != "Jina desc" {
+		t.Errorf("jina: %+v, %v", jn, err)
+	}
+	if _, err := parseJina([]byte(`<html>`)); err == nil {
+		t.Error("jina: invalid body accepted")
+	}
+	out, err := formatResults(context.Background(), "q", tv, 5, false)
+	if err != nil || !strings.Contains(out, "1. T\n   https://t.example/\n   Tavily extract") {
+		t.Errorf("format: %q, %v", out, err)
+	}
+	if _, err := formatResults(context.Background(), "q", nil, 5, false); !errors.Is(err, errNoResults) {
+		t.Errorf("format empty: %v", err)
 	}
 }

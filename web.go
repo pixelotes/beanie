@@ -250,7 +250,7 @@ func htmlToText(doc *node) (title, text string) {
 }
 
 // ---------------------------------------------------------------------------
-// web_search: plain DuckDuckGo Lite scraper, no API key.
+// web_search backends: DuckDuckGo Lite scraper here, the rest in search.go.
 // ---------------------------------------------------------------------------
 
 type searchResult struct {
@@ -263,34 +263,23 @@ const (
 	searchFetchN     = 3
 	searchExcerpt    = 1500
 	searchFetchLimit = 6 * time.Second
+	snippetChars     = 600
 )
 
-func webSearch(ctx context.Context, query string, n int, withContent bool) (string, error) {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return "", fmt.Errorf("la búsqueda está vacía")
-	}
-	note := ""
-	var exaErr error
-	if exaEnabled() {
-		out, err := exaSearch(ctx, query, n)
-		if err == nil {
-			return window(out, 0) + "\n\n(Resultados de Exa. Usa web_fetch con una URL para leer la página completa.)", nil
-		}
-		exaErr = err
-		note = fmt.Sprintf("(Exa no disponible: %v. Resultados de DuckDuckGo.)\n\n", err)
-	}
-
+// ddgSearch is the DuckDuckGo Lite backend of web_search (no API key).
+func ddgSearch(ctx context.Context, query string, n int, withContent bool) (string, error) {
 	results, err := searchDDG(ctx, query)
 	if err != nil {
-		if exaErr != nil {
-			// Both backends failed: say so, or the model only sees the second error.
-			return "", fmt.Errorf("ni Exa (%w) ni DuckDuckGo responden: %w", exaErr, err)
-		}
 		return "", err
 	}
+	return formatResults(ctx, query, results, n, withContent)
+}
+
+// formatResults lists up to n results; with withContent it also reads the
+// first pages so the model gets content, not just links.
+func formatResults(ctx context.Context, query string, results []searchResult, n int, withContent bool) (string, error) {
 	if len(results) == 0 {
-		return note + "Sin resultados. Prueba con otras palabras.", nil
+		return "", errNoResults
 	}
 	if len(results) > n {
 		results = results[:n]
@@ -314,17 +303,15 @@ func webSearch(ctx context.Context, query string, n int, withContent bool) (stri
 	}
 
 	var b strings.Builder
-	b.WriteString(note)
 	for i, r := range results {
 		fmt.Fprintf(&b, "%d. %s\n   %s\n", i+1, r.title, r.url)
 		if excerpts[i] != "" {
 			fmt.Fprintf(&b, "   Contenido:\n%s\n\n", indent(excerpts[i], "   > "))
 		} else if r.snippet != "" {
-			fmt.Fprintf(&b, "   %s\n", truncate(r.snippet, 300))
+			fmt.Fprintf(&b, "   %s\n", truncate(r.snippet, snippetChars))
 		}
 	}
-	b.WriteString("\nUsa web_fetch con una URL para leer la página completa.")
-	return b.String(), nil
+	return strings.TrimRight(b.String(), "\n"), nil
 }
 
 // excerpt keeps the paragraphs that best match the query, in page order,
