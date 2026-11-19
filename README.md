@@ -26,6 +26,8 @@ Long responses are cut (12,000 characters by default) and tell the model which `
 
 ## Usage
 
+Prebuilt binaries for Linux, macOS and Windows, with `SHA256SUMS`, are on the [releases page](https://github.com/pixelotes/beanie/releases). Or build it:
+
 ```bash
 make build                               # or: go build -trimpath -ldflags="-s -w" -o beanie .
 ./beanie                                 # stdio (Claude Desktop, etc.)
@@ -95,6 +97,8 @@ make test    # go test -race ./...
 make lint    # golangci-lint run
 make fmt     # gofmt -w .
 ```
+
+To release, push a tag: `git tag v4.1.0 && git push origin v4.1.0`. The Release workflow tests, cross-compiles and publishes the binaries.
 
 The HTTP transport is stateless Streamable HTTP: `POST /mcp` with a JSON-RPC message returns a JSON reply. There are no sessions and no server-initiated streams. `GET /healthz` returns `ok`.
 

@@ -14,7 +14,8 @@ import (
 	"github.com/pixelotes/beanie/calc"
 )
 
-const version = "4.0.0"
+// version is set at build time: -ldflags "-X main.version=4.1.0".
+var version = "dev"
 
 const startDesc = "Carácter desde el que seguir leyendo si la respuesta anterior se cortó. Por defecto 0."
 
