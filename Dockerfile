@@ -1,10 +1,10 @@
 # Build: static binary, standard library only.
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
-ARG TARGETOS TARGETARCH
+ARG TARGETOS TARGETARCH VERSION=dev
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /beanie .
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /beanie .
 
 # Runtime: just the binary and CA certificates (~8 MB image).
 FROM scratch
