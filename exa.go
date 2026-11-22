@@ -37,8 +37,6 @@ func exaKey(ctx context.Context) string {
 	return strings.TrimSpace(os.Getenv("EXA_API_KEY"))
 }
 
-func exaEnabled() bool { return os.Getenv("BEANIE_EXA") != "0" }
-
 var errExaEmpty = errors.New("sin resultados")
 
 func exaSearch(ctx context.Context, query string, n int) (string, error) {

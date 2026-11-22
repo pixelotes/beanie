@@ -12,7 +12,7 @@ Tool descriptions and output are in Spanish, since they are aimed at Spanish-spe
 | Tool | What it does | Backend |
 |---|---|---|
 | `web_fetch` | Downloads a page and returns its main text as Markdown | direct |
-| `web_search` | Web search that returns page content, not just links | Exa (free tier, optional key), falling back to DuckDuckGo Lite |
+| `web_search` | Web search that returns page content, not just links | A chain you choose: Exa, Tavily, Jina, DuckDuckGo Lite (default) |
 | `news` | Current headlines with source and time, or news on a topic | Google News RSS (no API key) |
 | `search_wikipedia` | Searches for articles | Wikipedia API |
 | `fetch_wikipedia` | Reads an article's intro, one section or the whole text | Wikipedia API |
@@ -72,14 +72,25 @@ BEANIE_CORS_ORIGINS=https://chat.example.com ./beanie -transport http
 | `BEANIE_TOKEN` | empty | require `Authorization: Bearer <token>` in HTTP mode |
 | `BEANIE_INSECURE_NO_TOKEN` | empty | `1` allows listening on a non-loopback address without a token |
 | `BEANIE_ALLOW_PRIVATE` | empty | `1` lets `web_fetch` reach local/private IPs |
-| `EXA_API_KEY` | empty | Exa API key for `web_search`; without it Exa's keyless free tier is used |
-| `BEANIE_EXA` | empty | `0` disables Exa and searches DuckDuckGo only |
+| `BEANIE_SEARCH` | `duckduckgo` | `web_search` backends in order, comma-separated: `exa`, `tavily`, `jina`, `duckduckgo` (or `ddg`) |
+| `EXA_API_KEY` | empty | Exa API key; without it Exa's keyless free tier is used |
+| `TAVILY_API_KEY` | empty | Tavily API key (required to use `tavily`) |
+| `JINA_API_KEY` | empty | Jina API key (required to use `jina`) |
 
 ## Web search
 
-`web_search` tries [Exa](https://exa.ai) first through its hosted MCP endpoint, which works without a key on a rate-limited free tier and returns highlights from each page. If Exa fails, is rate-limited or finds nothing, it falls back to DuckDuckGo Lite and tells the model so. With DuckDuckGo, Beanie fetches the top 3 results itself and attaches the paragraphs that best match the query.
+`web_search` tries the backends listed in `BEANIE_SEARCH`, in order, and returns the first answer. When one fails, is rate-limited or finds nothing, the next is tried and the model is told which ones failed. A backend that needs a key and has none is skipped (and logged at start-up); unknown names are ignored with a warning. Without `BEANIE_SEARCH`, only DuckDuckGo is used.
 
-To use your own Exa key, set `EXA_API_KEY`, or send it per request in HTTP mode with the `X-Exa-Api-Key` header. The header wins over the variable, so each client can bring its own key.
+| Backend | Key | What it returns |
+|---|---|---|
+| `exa` | optional (`EXA_API_KEY`) | Highlights from each page, through [Exa](https://exa.ai)'s hosted MCP endpoint (keyless free tier is rate-limited) |
+| `tavily` | `TAVILY_API_KEY` | Titles, URLs and a relevant extract of each page, from [Tavily](https://tavily.com)'s search API |
+| `jina` | `JINA_API_KEY` | Titles, URLs and descriptions from [Jina](https://jina.ai)'s `s.jina.ai`; Beanie reads the top 3 pages itself |
+| `duckduckgo` | none | DuckDuckGo Lite results, scraped; Beanie reads the top 3 pages itself. Datacenter IPs may get its anti-bot page |
+
+For example, `BEANIE_SEARCH=exa,tavily,duckduckgo` uses Exa, then Tavily, then DuckDuckGo. With Jina and DuckDuckGo, `include_content: false` skips reading pages for a faster, links-only answer.
+
+In HTTP mode a client can also send its own Exa key with the `X-Exa-Api-Key` header, which wins over `EXA_API_KEY`.
 
 ## Security
 
